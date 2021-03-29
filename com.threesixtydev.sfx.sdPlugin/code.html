@@ -8,14 +8,181 @@
 
 <body>
     <script>
-    	var interval = {};
     	var websocket = null;
     	var pluginUUID = null;
     	
     	var DestinationEnum = Object.freeze({"HARDWARE_AND_SOFTWARE":0, "HARDWARE_ONLY":1, "SOFTWARE_ONLY":2})
     	
-        var timer;
-		var settings_collection = {};
+
+		function update_button(button)
+		{
+			button.update()
+		}
+
+		let SFXButton = class {
+			constructor(context, settings)
+			{
+				this.context = context
+				this.orgid = null
+				this.token = null
+				if('org-id' in settings)
+					this.orgid = settings['org-id']
+				if('x-sf-token' in settings)
+					this.token = settings['x-sf-token']
+				this.currentImage = null
+				this.connected = true
+				this.interval = null
+			}
+
+			log(line)
+			{
+				console.log("[" + this.context + "]" + line)
+			}
+
+			update()
+			{
+				this.log("Updating From SFX", this.context, this.orgid);
+				fetch("https://app.signalfx.com/v1/eventtimeseries?query=sf_organizationID%3A" + this.orgid + "%20AND%20(NOT%20sf_archived%3Atrue)%20%20AND%20(((sf_anomalyState%3A(%22anomalous%22%20OR%20%22too%20high%22%20OR%20%22too%20low%22))))&getAggregation=true&terms=sf_severity", {'headers':{"X-SF-TOKEN": this.token}})
+					.then(response => {
+						if (!response.ok) {
+							this.set_image("Disconnected.png")
+							this.clear_interval()
+							this.connected = false
+							return null
+						}
+						return response.json()
+					})
+					.then(data => {
+						if (!data) {
+							this.set_image("Disconnected.png")
+							this.clear_interval()
+							this.connected = false
+							return
+						}
+						var aggs = data.aggregations
+						
+						var counts = {};
+						for (var i = 0; i < aggs.length; i++) {
+							var item = aggs[i];
+							counts[item['name']] = item['count'];
+						}
+						this.log("Counts", counts);
+
+						if(counts['Critical'] > 0)
+						{
+							this.set_image("Critical.png")
+							counterAction.SetTitle(this.context, counts["Critical"]);
+						}
+						else if(counts['Major'] > 0)
+						{
+							this.set_image("Major.png")
+							counterAction.SetTitle(this.context, counts["Major"]);
+						}
+						else if(counts['Minor'] > 0)
+						{
+							this.set_image("Minor.png")
+							counterAction.SetTitle(this.context, counts["Minor"]);
+						}
+						else if(counts['Warning'] > 0)
+						{
+							this.set_image("Warning.png")
+							counterAction.SetTitle(this.context, counts["Warning"]);
+						}
+						else if(counts['Info'] > 0)
+						{
+							this.set_image("Info.png")
+							counterAction.SetTitle(this.context, counts["Info"]);
+						}
+						else{
+							this.set_image("Ok.png")
+							counterAction.SetTitle(this.context, "0");
+						}
+					});
+			}
+
+			set_image(image)
+			{
+				if(this.currentImage != image)
+				{
+					this.log("Loading and setting: " + image)
+					loadAndSetImage(this.context, image)
+					this.currentImage = image
+				}
+				else
+					this.log("Already set to: " + image)
+			}
+
+			update_setting(key, value)
+			{
+				this.log("Updating setting:", key)
+				if(key == 'x-sf-token')
+					this.token = value
+				if(key == 'org-id')
+					this.orgid = value
+				counterAction.SetSettings(this.context, this.settings());
+				this.connected = true
+				this.restart_updates()
+			}
+
+			settings()
+			{
+				return {'org-id': this.orgid, 'x-sf-token': this.token};
+			}
+
+			clear_interval()
+			{
+				this.log("Clearing intervals")
+				if (this.interval)
+				{
+					clearInterval(this.interval)
+					this.interval = null
+				}
+			}
+
+			is_valid()
+			{
+				return this.orgid && this.token && this.connected
+			}
+
+			restart_updates()
+			{
+				this.log("Restarting updates")
+				this.clear_interval()
+				if(!this.is_valid())
+				{
+					this.set_image("Disconnected.png")
+					return
+				}
+				this.update()
+				this.interval = setInterval(update_button, 60000, this)
+			}
+
+			open_url()
+			{
+				this.log("Opening URL")
+				if (!this.is_valid())
+				{
+					counterAction.ShowAlert(this.context)
+					return
+				}
+				counterAction.OpenURL("https://app.signalfx.com/#/alerts/" + this.orgid)
+			}
+		};
+
+		let SFXButtons = class {
+			constructor() {
+				this.buttons = {}
+			}
+
+			get_button(context, settings) {
+				if (!(context in this.buttons))
+				{
+					this.buttons[context] = new SFXButton(context, settings)
+				}
+				return this.buttons[context]
+			}
+		};
+		var buttons = new SFXButtons();
         
 		function loadImage (inUrl, callback, inCanvas, inFillcolor) {
 			/** Convert to array, so we may load multiple images at once */
@@ -84,96 +251,6 @@
 			});
 		};
 
-		function update_button(context, orgid, token) {
-			console.log("Updating From SFX", context, orgid, token);
-			
-			fetch("https://app.signalfx.com/v1/eventtimeseries?query=sf_organizationID%3A" + orgid + "%20AND%20(NOT%20sf_archived%3Atrue)%20%20AND%20(((sf_anomalyState%3A(%22anomalous%22%20OR%20%22too%20high%22%20OR%20%22too%20low%22))))&getAggregation=true&terms=sf_severity", {'headers':{"X-SF-TOKEN": token}})
-				.then(response => {
-					if (!response.ok) {
-						counterAction.ShowAlert(context)
-						loadAndSetImage(context, "Disconnected.png")
-						stop_updates(context)
-						return null
-					}
-					return response.json()
-				})
-				.then(data => {
-					if (!data) {
-						return
-					}
-					var aggs = data.aggregations
-					
-					var counts = {};
-					for (var i = 0; i < aggs.length; i++) {
-						var item = aggs[i];
-						counts[item['name']] = item['count'];
-					}
-					console.log("Counts", counts);
-
-					if(counts['Critical'] > 0)
-					{
-						loadAndSetImage(context, "Critical.png")
-						counterAction.SetTitle(context, counts["Critical"]);
-					}
-					else if(counts['Major'] > 0)
-					{
-						loadAndSetImage(context, "Major.png")
-						counterAction.SetTitle(context, counts["Major"]);
-					}
-					else if(counts['Minor'] > 0)
-					{
-						loadAndSetImage(context, "Minor.png")
-						counterAction.SetTitle(context, counts["Minor"]);
-					}
-					else if(counts['Warning'] > 0)
-					{
-						loadAndSetImage(context, "Warning.png")
-						counterAction.SetTitle(context, counts["Warning"]);
-					}
-					else if(counts['Info'] > 0)
-					{
-						loadAndSetImage(context, "Info.png")
-						counterAction.SetTitle(context, counts["Info"]);
-					}
-					else{
-						loadAndSetImage(context, "Ok.png")
-						counterAction.SetTitle(context, "0");
-					}
-				});
-		}
-
-		function restart_updates(context, settings)
-		{
-			if (!(context in interval))
-			{
-				interval[context] = null;
-			}
-			if (!("org-id" in settings) || !settings["org-id"])
-			{
-				counterAction.ShowAlert(context)
-				loadAndSetImage(context, "Disconnected.png")
-				return
-			}
-			if (!("x-sf-token" in settings) || !settings["x-sf-token"])
-			{
-				counterAction.ShowAlert(context)
-				loadAndSetImage(context, "Disconnected.png")
-				return
-			}
-			if (interval[context] !== null) {
-				clearInterval(interval[context]);
-			}
-			update_button(context, settings['org-id'], settings['x-sf-token']);
-			interval[context] = setInterval(update_button, 60000, context, settings['org-id'], settings['x-sf-token']);
-		}
-
-		function stop_updates(context)
-		{
-			if (interval[context] !== null) {
-				clearInterval(interval[context]);
-			}
-		}
-
     	var counterAction = {
 			
 			type : "com.threesixtydev.sfx.action",
@@ -183,23 +260,15 @@
 			},
 			
 			onKeyUp : function(context, settings, coordinates, userDesiredState) {
-				console.log("Opening SFX", settings)
-				if (!("org-id" in settings) || !settings["org-id"])
-				{
-					this.ShowAlert(context)
-					return
-				}
-				this.OpenURL("https://app.signalfx.com/#/alerts/" + settings["org-id"])
+				buttons.get_button(context, settings).open_url()
 			},
 			
 			onWillAppear : function(context, settings, coordinates) {
-				console.log("appearing", settings)
-				restart_updates(context, settings)
+				buttons.get_button(context, settings).restart_updates()
 			},
 
 			onWillDisappear : function(context, settings, coordinates) {
-				console.log("disappearing", settings)
-				stop_updates(context)
+				buttons.get_button(context, settings).clear_interval()
 			},
 			
 			SetTitle : function(context, title_string) {
@@ -243,7 +312,7 @@
 				};
 			
 				websocket.send(JSON.stringify(json));
-				restart_updates(context, settings)
+				buttons.get_button(context, settings).settings()
 			 }
 		};
     	
@@ -310,17 +379,11 @@
 				}
 				else if(event == "sendToPlugin")
 				{
-					console.log("sendToPlugin", jsonObj)
 					var jsonPayload = jsonObj['payload'];
 					if ('sdpi_collection' in jsonPayload)
 					{
 						var sdpi_collection = jsonPayload['sdpi_collection']
-						if (!(context in settings_collection))
-						{
-							settings_collection[context] = {}
-						}
-						settings_collection[context][sdpi_collection['key']] = sdpi_collection['value'];
-						counterAction.SetSettings(context, settings_collection[context]);
+						buttons.get_button(context).update_setting(sdpi_collection['key'], sdpi_collection['value'])
 					}
 				}
 				else

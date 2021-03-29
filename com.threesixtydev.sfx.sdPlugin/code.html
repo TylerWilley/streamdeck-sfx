@@ -2,7 +2,7 @@
 <html>
 
 <head>
-	<title>"com.threesixtydev.sfx</title>
+	<title>com.threesixtydev.sfx</title>
     <meta charset="utf-8" />
 </head>
 
@@ -45,6 +45,7 @@
 				fetch("https://app.signalfx.com/v1/eventtimeseries?query=sf_organizationID%3A" + this.orgid + "%20AND%20(NOT%20sf_archived%3Atrue)%20%20AND%20(((sf_anomalyState%3A(%22anomalous%22%20OR%20%22too%20high%22%20OR%20%22too%20low%22))))&getAggregation=true&terms=sf_severity", {'headers':{"X-SF-TOKEN": this.token}})
 					.then(response => {
 						if (!response.ok) {
+							this.log("Errored SFX Response, Disconnecting")
 							this.set_image("Disconnected.png")
 							this.clear_interval()
 							this.connected = false
@@ -54,6 +55,7 @@
 					})
 					.then(data => {
 						if (!data) {
+							this.log("Blank SFX Response, Disconnecting")
 							this.set_image("Disconnected.png")
 							this.clear_interval()
 							this.connected = false

@@ -1,0 +1,43 @@
+{
+  "Actions": [
+    {
+      "Icon": "pluginIcon", 
+      "Name": "Incident Button", 
+      "States": [
+        {
+          "Image": "Ok",
+          "TitleAlignment": "middle", 
+          "FontSize": "16"
+        }
+      ], 
+      "SupportedInMultiActions": false,
+      "Tooltip": "How many open incidents do you have?.", 
+      "UUID": "com.threesixtydev.sfx.action"
+    }
+  ], 
+  "SDKVersion": 2,
+  "Author": "Tyler Willey", 
+  "CodePath": "code.html", 
+  "Description": "Display alert counts.", 
+  "Name": "SignalFX", 
+  "Icon": "pluginIcon", 
+  "PropertyInspectorPath": "index_pi.html",
+  "URL": "", 
+  "Version": "1.4",
+  "Category": "SignalFX",
+  "CategoryIcon": "pluginIcon",
+  "OS": [
+    {
+        "Platform": "mac", 
+        "MinimumVersion" : "10.11"
+    },
+    {
+        "Platform": "windows", 
+        "MinimumVersion" : "10"
+    }
+  ],
+  "Software": 
+    {
+        "MinimumVersion" : "4.1"
+    }
+}

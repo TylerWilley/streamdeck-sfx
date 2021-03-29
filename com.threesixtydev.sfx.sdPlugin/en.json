@@ -1,0 +1,8 @@
+{
+  "Description": "How many open SFX incidents you have.", 
+  "Name": "Incident Button", 
+  "com.threesixtydev.sfx.action": {
+    "Name": "Incident Button", 
+    "Tooltip": "How many open SFX incidents you have."
+  }
+}
